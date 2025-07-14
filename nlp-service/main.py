@@ -1,3 +1,5 @@
+
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,7 +13,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 # SETUP GEMINI
 genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
 model_text = genai.GenerativeModel("gemini-2.0-flash-lite")
@@ -20,14 +21,17 @@ model_vision = genai.GenerativeModel("gemini-2.0-flash-lite")
 # ==== FastAPI Setup ====
 app = FastAPI()
 
+
 class InputPayload(BaseModel):
     type: Literal["image", "text", "list"]
     content: Union[str, list]
+
 
 # === JSON Save Utility ===
 def save_json(data, filename="output.json"):
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
+
 
 # === Format conversion ===
 def convert_to_final_format(items):
@@ -35,17 +39,35 @@ def convert_to_final_format(items):
     for line in items:
         if not line.strip():
             continue
-        name = line.split()[0]
+
         query = line.strip()
+
+        # Extract product name: take last 2 or 3 words
+        words = query.split()
+        if len(words) >= 3:
+            name = " ".join(words[-3:])
+        elif len(words) == 2:
+            name = " ".join(words[-3:])
+        else:
+            name = words[0]
+
         result.append({"name": name, "query": query})
     return result
 
 # === Handlers ===
 def handle_image_input(content):
-    image = Image.open(image)
+    image = Image.open(content)
 
     prompt = """
-You are an AI assistant.
+You're an AI assistant. Read the image of a shopping list and convert the items to plain English equivalents.
+For example:
+- Convert `maida` to `all-purpose flour`
+- Convert `haldi` to `turmeric`
+Return the cleaned list as plain lines:
+e.g.
+2L Amul milk
+1kg all-purpose flour
+and
 Read the image of a shopping list and return the list items as plain lines (no JSON formatting).
 If the image is too blurry or can't be interpreted properly, respond exactly with:
 { "flag": "bad_image" }
@@ -63,6 +85,7 @@ some chocolates for kids
 
     lines = raw.splitlines()
     return convert_to_final_format(lines)
+
 
 def handle_text_input(text):
     prompt = f"""
@@ -98,6 +121,7 @@ List:
         return json.loads(content)
     except:
         return {"error": "Failed to parse Gemini response", "raw": content}
+
 
 def handle_list_input(json_str):
     # try:
@@ -148,9 +172,10 @@ List:
         return json.loads(content)
     except:
         return {"error": "Failed to parse Gemini response", "raw": content}
-    
 
     # === Route ===
+
+
 @app.post("/api/extract-products")
 async def process_input(payload: InputPayload):
     input_type = payload.type
@@ -178,6 +203,7 @@ async def process_input(payload: InputPayload):
     save_json(result)
     print(f"nlp-service: Processed input and saved to output.json, {result}")
     return JSONResponse(content=result)
+
 
 # === Start the server ===
 if __name__ == "__main__":
